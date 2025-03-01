@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 
 # --------------------------------------------------------------
-#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Hide Flag
+#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Module Listing
 #
 #   Key Enhancements:
 #    - Additional service-specific enumeration (SMB, FTP, CMS detection)
 #    - Auto-generated summary report categorizing discovered ports/services,
 #      which is prepended to the Markdown output (unless hidden via -hideReport).
 #    - A -modular flag to run only selected modules, and a new -hide flag
-#      to hide output of specified modules (e.g. -hide curl,whatweb)
+#      to hide output of specified modules.
+#    - A new -listModules flag that prints out the list of all available modules.
 #    - Improved error handling and timeouts using the 'timeout' command.
 #    - Hydra SSH brute forcing uses 32 threads (-t 32)
-#    - Gobuster uses quiet mode (-q) so only positive results are shown.
+#    - Gobuster runs in quiet mode (-q) so only positive results are shown.
 # --------------------------------------------------------------
 
 # ==========================
@@ -33,7 +34,11 @@ SKIP_PORTS=""
 # Flags for output and module selection
 HIDE_REPORT=false
 MODULAR=""       # Comma-separated list of modules to run (if empty, run all)
-HIDE_MODULES=""  # Comma-separated list of modules whose output should be hidden
+HIDE_MODULES=""  # Comma-separated list of module keywords to hide output
+LIST_MODULES=false
+
+# Valid modules (for -modular and -listModules)
+VALID_MODULES=("nmap" "gobuster" "curl" "nikto" "whatweb" "ftp" "smb" "ssh" "rdp" "wpscan")
 
 # Declare an associative array for summary report
 declare -A SUMMARY
@@ -76,13 +81,15 @@ Options:
   -skip <PORTS>        Comma-separated list of ports to skip (e.g., 80,443)
 
   -modular <modules>   Comma-separated list of modules to run.
-                       Valid modules: nmap,gobuster,nikto,whatweb,ftp,smb,ssh,rdp.
+                       Valid modules: nmap, gobuster, curl, nikto, whatweb, ftp, smb, ssh, rdp, wpscan.
                        (If omitted, all modules run.)
 
   -hide <modules>      Comma-separated list of module keywords whose output
                        will be hidden. For example: -hide curl,whatweb
 
-  -hideReport          Do not prepend the auto-summary report to the output.
+  -hideReport          Do not prepend the auto-generated summary report to the output.
+
+  -listModules         List all valid modules and exit.
 
   -h, --help           Show this help menu and exit
 
@@ -91,6 +98,7 @@ Examples:
   \$0 -target 192.168.1.100 -createdir /home/user/MyScan
   \$0 -target 172.16.0.5 -modular nmap,ssh,rdp
   \$0 -target 10.10.10.10 -w /path/to/custom_wordlist.txt -threads 50 -skip 80,443 -hide curl,whatweb
+  \$0 -listModules
 EOF
 }
 
@@ -138,12 +146,11 @@ confirm_overwrite() {
   fi
 }
 
-# Function to check if a module's output should be hidden
+# Check if module output should be hidden based on -hide flag
 module_hidden() {
   local title_lower
   title_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
   if [[ -n "$HIDE_MODULES" ]]; then
-    # Split HIDE_MODULES by comma and check if any substring is found
     IFS=',' read -ra hide_array <<< "$HIDE_MODULES"
     for h in "${hide_array[@]}"; do
       if echo "$title_lower" | grep -qw "$h"; then
@@ -204,7 +211,6 @@ run_single_task() {
   raw=$(eval "$cmd" 2>&1)
   local rc=$?
 
-  # If the module is hidden, do not output its raw results.
   if module_hidden "$title"; then
     echo "Output hidden for module: $title" >> "$OUTPUT_FILE"
   else
@@ -268,7 +274,6 @@ parse_nmap_and_queue_stage2() {
     port="$(echo "$line" | cut -d'/' -f1)"
     service="$(echo "$line" | awk '{print $3}' | tr '[:upper:]' '[:lower:]')"
 
-    # Add to summary report
     add_summary "$service" "$port"
 
     if should_skip_port "$port"; then
@@ -364,10 +369,18 @@ main() {
     exit 1
   fi
 
+  # Process command-line arguments
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
       -h|--help)
         show_help
+        exit 0
+        ;;
+      -listModules)
+        echo "Valid modules:"
+        for mod in "${VALID_MODULES[@]}"; do
+          echo " - $mod"
+        done
         exit 0
         ;;
       -target)
@@ -436,7 +449,7 @@ main() {
   echo "Script started at: $(timestamp)" >> "$OUTPUT_FILE"
   echo "" >> "$OUTPUT_FILE"
 
-  # STAGE 1
+  # STAGE 1: Build tasks based on modules (if -modular is provided, only run those)
   TASKS_STAGE1+=("Nmap Full Port Scan|timeout 300 nmap -p- -sV -vv $TARGET | tee /tmp/nmap_temp")
 
   if ! should_skip_port "80"; then
@@ -471,7 +484,7 @@ main() {
 
   run_all_tasks TASKS_STAGE1
 
-  # STAGE 2
+  # STAGE 2: Parse Nmap and queue tasks for discovered ports
   parse_nmap_and_queue_stage2
 
   if [[ ${#TASKS_STAGE2[@]} -gt 0 ]]; then
