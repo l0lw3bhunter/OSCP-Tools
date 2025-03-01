@@ -74,12 +74,3 @@ For example, to scan a target with IP `192.168.1.100`:
 ```bash
 ./scan.sh -target 192.168.1.100 -skip 80,443 -modular nmap,ssh,rdp -hide curl,whatweb
 ```
-
-## Additional Information
-
-- The `scan.sh` script will generate a Markdown report (by default named `Initial_scan.md`) containing the output from various enumeration tools.
-- Open the generated report using a Markdown viewer (such as Obsidian) for a summarized view of the scan results.
-- For further customization details, refer to the inline comments within `scan.sh`.
-
-Happy scanning!
-```
