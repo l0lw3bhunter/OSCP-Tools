@@ -63,12 +63,13 @@ For example, to scan a target with IP `192.168.1.100`:
 **Additional Flags:**
 
 - **`-skip 80,443`**: Skip scanning on these ports.
-- **`-modular nmap,nikto`**: Run only the specified modules.
-- **`-hide curl,whatweb`**: Hide output from the specified modules.
+- **`-modular <modules>`**: Run only the specified modules.
+- **`-hide <modules>`**: Hide output from the specified modules.
 - **`-hideReport`**: Do not prepend the auto-generated summary report.
 - **`-hide <modules>`**: Hide output of specified modules (inverse of -modular).
 - **`-threads <NUMBER>`**: Set Gobuster's thread count.
 - **`-w <WORDLIST>`**: Set a custom wordlist for Gobuster.
+-  **`-listModules`**: Lists all available modules.
 
 **Example with Additional Flags:**
 ```bash
