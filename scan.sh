@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 
 # --------------------------------------------------------------
-#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Additional Port Scanning
+#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Overall Summary
 #
 #   Key Enhancements:
-#    - Additional service-specific enumeration (SMB, FTP, CMS detection)
-#    - Auto-generated summary report categorizing discovered ports/services,
-#      which is prepended to the Markdown output (unless hidden via -hideReport)
-#    - A -modular flag to run only selected modules and a -hide flag to hide output
-#      from specified modules.
-#    - A new -ports flag that takes a comma-separated list (e.g. "-ports 8080,1234")
-#      and performs additional Gobuster, Nikto, WhatWeb, and Curl scans on those ports.
-#    - Improved error handling and timeouts using the 'timeout' command.
-#    - Hydra SSH brute forcing uses 32 threads (-t 32)
-#    - Gobuster runs in quiet mode (-q) so only positive results are shown.
+#    - Additional port scanning via -ports flag.
+#    - Auto-generated overall summary report including:
+#         * Overall start/finish times and total duration.
+#         * Duration per module.
+#         * Service summary (e.g., Open HTTP ports, SSH version info).
+#    - -modular flag to select modules; -hide flag to hide module outputs.
+#    - Improved error handling/timeouts.
+#    - Hydra SSH brute forcing uses 32 threads.
+#    - Gobuster runs in quiet mode (-q).
 # --------------------------------------------------------------
 
 # ==========================
@@ -29,10 +28,10 @@ TARGET=""
 GOBUSTER_WORDLIST="/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt"
 GOBUSTER_THREADS="10"
 
-# Additional ports for extra scanning (comma-separated, e.g. "8080,1234")
+# Additional ports flag (-ports) (comma-separated, e.g., "8080,1234")
 ADDITIONAL_PORTS=""
 
-# Flags for output and module selection
+# Flags for module selection and hiding outputs
 HIDE_REPORT=false
 MODULAR=""       # Comma-separated list of modules to run (if empty, run all)
 HIDE_MODULES=""  # Comma-separated list of module keywords whose output will be hidden
@@ -41,19 +40,26 @@ LIST_MODULES=false
 # Valid modules (for -modular and -listModules)
 VALID_MODULES=("nmap" "gobuster" "curl" "nikto" "whatweb" "ftp" "smb" "ssh" "rdp" "wpscan")
 
-# Declare an associative array for summary report
+# Global timing variables for overall scan
+overall_start_fmt=""
+overall_start_epoch=0
+overall_end_fmt=""
+overall_end_epoch=0
+overall_duration=0
+
+# Declare an associative array for service summary report
 declare -A SUMMARY
 
 # Arrays for tasks
 declare -a TASKS_STAGE1=()  # Nmap + baseline tasks
-declare -a TASKS_STAGE2=()  # Tasks queued from parsing Nmap output
+declare -a TASKS_STAGE2=()  # Tasks queued from Nmap parsing
 declare -a TASKS_WPSCAN=()  # WPScan tasks
 declare -a TASKS_ADDP=()    # Additional port scanning tasks from -ports flag
 
 # Track how many tasks fail
 FAILED_TASKS=0
 
-# Summaries for tasks
+# Summaries for individual tasks (module durations, exit codes, etc.)
 TASK_SUMMARY=""
 
 # ==========================
@@ -80,8 +86,7 @@ Options:
 
   -threads <NUMBER>    Gobuster thread count (default: \$GOBUSTER_THREADS)
 
-  -ports <PORTS>       Comma-separated list of ports to perform additional
-                       Gobuster, Nikto, WhatWeb, and Curl scans on.
+  -ports <PORTS>       Comma-separated list of ports for additional scans.
                        (e.g., -ports 8080,1234)
 
   -modular <modules>   Comma-separated list of modules to run.
@@ -89,9 +94,9 @@ Options:
                        (If omitted, all modules run.)
 
   -hide <modules>      Comma-separated list of module keywords whose output
-                       will be hidden. For example: -hide curl,whatweb
+                       will be hidden. (e.g., -hide curl,whatweb)
 
-  -hideReport          Do not prepend the auto-generated summary report to the output.
+  -hideReport          Do not prepend the auto-generated overall summary report.
 
   -listModules         List all valid modules and exit.
 
@@ -120,7 +125,6 @@ cat << "EOF"
 ░ ░ ▒  ░  ░ ▒ ▒░ ░ ░ ▒  ░     ▒ ░ ░   ░ ░  ░▒░▒   ░  ▒ ░▒░ ░░░▒░ ░ ░ ░ ░░   ░ ▒░    ░     ░ ░  ░  ░▒ ░▒▓░
   ░ ░   ░ ░ ░ ▒    ░ ░        ░   ░     ░    ░    ░  ░  ░░ ░ ░░░ ░ ░    ░   ░ ░   ░         ░     ░░   ░
     ░  ░    ░ ░      ░  ░       ░       ░  ░ ░       ░  ░  ░   ░              ░             ░  ░   ░
-v1.0.2 - Created by Oliver Jones
 EOF
 }
 
@@ -143,7 +147,7 @@ confirm_overwrite() {
   fi
 }
 
-# Check if a module's output should be hidden based on the -hide flag
+# Check if a module's output should be hidden based on -hide flag
 module_hidden() {
   local title_lower
   title_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
@@ -173,20 +177,34 @@ add_summary() {
 }
 
 generate_summary_report() {
-  local report="## Auto-generated Summary Report\n\n"
+  local report="## Auto-generated Service Summary\n\n"
   for service in "${!SUMMARY[@]}"; do
     report+="- Open ${service^^} ports: ${SUMMARY[$service]}\n"
   done
   echo -e "$report"
 }
 
+# Generate overall summary including timings and module details.
+generate_overall_summary() {
+  local overall_summary="==============================\nSCAN SUMMARY\n==============================\n"
+  overall_summary+="Start Time: ${overall_start_fmt}\n"
+  overall_summary+="Finish Time: ${overall_end_fmt}\n"
+  overall_summary+="Total Duration: ${overall_duration} sec\n\n"
+  overall_summary+="Module Details:\n"
+  overall_summary+="${TASK_SUMMARY}\n\n"
+  overall_summary+="Service Summary:\n"
+  overall_summary+="$(generate_summary_report)\n"
+  overall_summary+="=============================="
+  echo -e "$overall_summary"
+}
+
 prepend_report() {
   if [ "$HIDE_REPORT" = false ]; then
-    local report
-    report=$(generate_summary_report)
+    local overall_summary
+    overall_summary=$(generate_overall_summary)
     local tmp_file
     tmp_file=$(mktemp)
-    echo -e "$report\n$(cat "$OUTPUT_FILE")" > "$OUTPUT_FILE"
+    echo -e "$overall_summary\n\n$(cat "$OUTPUT_FILE")" > "$OUTPUT_FILE"
   fi
 }
 
@@ -197,11 +215,11 @@ run_single_task() {
   local title="$1"
   local cmd="$2"
 
-  local start_time
-  start_time=$(timestamp)
+  local start_time_fmt=$(date "+%F %T")
+  local start_time_epoch=$(date +%s)
 
-  echo "Running: $title (Start: $start_time)"
-  echo "## $title (Started at $start_time)" >> "$OUTPUT_FILE"
+  echo "Running: $title (Start: $start_time_fmt)"
+  echo "## $title (Started at $start_time_fmt)" >> "$OUTPUT_FILE"
   echo '```' >> "$OUTPUT_FILE"
 
   local raw
@@ -217,8 +235,9 @@ run_single_task() {
   echo '```' >> "$OUTPUT_FILE"
   echo "" >> "$OUTPUT_FILE"
 
-  local end_time
-  end_time=$(timestamp)
+  local end_time_fmt=$(date "+%F %T")
+  local end_time_epoch=$(date +%s)
+  local duration=$(( end_time_epoch - start_time_epoch ))
 
   if [[ $rc -ne 0 ]]; then
     if [[ "$title" == *"Nikto"* ]] && echo "$raw" | grep -Eq "0 error\(s\) and [0-9]+ item\(s\) reported on remote host"; then
@@ -233,7 +252,7 @@ run_single_task() {
     fi
   fi
 
-  TASK_SUMMARY+="\n- [$title] finished at $end_time (Exit: $rc)"
+  TASK_SUMMARY+="\n- [$title] finished at $end_time_fmt (Duration: ${duration} sec, Exit: $rc)"
 }
 
 run_all_tasks() {
@@ -273,8 +292,7 @@ parse_nmap_and_queue_stage2() {
 
     add_summary "$service" "$port"
 
-    # Do not filter out 80/443 here—these are normally scanned in stage 1
-    # Queue tasks for all discovered ports (other than 80 and 443)
+    # Do not filter out 80/443 here—they are normally scanned in stage 1
     if [[ "$port" == "80" || "$port" == "443" ]]; then
       continue
     fi
@@ -350,10 +368,41 @@ build_additional_port_tasks() {
 }
 
 # ==========================
+#  OVERALL SUMMARY GENERATION
+# ==========================
+generate_overall_summary() {
+  local overall_summary="==============================\nSCAN SUMMARY\n==============================\n"
+  overall_summary+="Start Time: ${overall_start_fmt}\n"
+  overall_summary+="Finish Time: ${overall_end_fmt}\n"
+  overall_summary+="Total Duration: ${overall_duration} sec\n\n"
+  overall_summary+="Module Details:\n"
+  overall_summary+="${TASK_SUMMARY}\n\n"
+  overall_summary+="Service Summary:\n"
+  for service in "${!SUMMARY[@]}"; do
+    overall_summary+="- Open ${service^^} ports: ${SUMMARY[$service]}\n"
+  done
+  overall_summary+="=============================="
+  echo -e "$overall_summary"
+}
+
+prepend_report() {
+  if [ "$HIDE_REPORT" = false ]; then
+    local overall_summary
+    overall_summary=$(generate_overall_summary)
+    local tmp_file
+    tmp_file=$(mktemp)
+    echo -e "$overall_summary\n\n$(cat "$OUTPUT_FILE")" > "$OUTPUT_FILE"
+  fi
+}
+
+# ==========================
 #           MAIN
 # ==========================
 main() {
   print_banner
+
+  overall_start_fmt=$(date "+%F %T")
+  overall_start_epoch=$(date +%s)
 
   if [[ $# -eq 0 ]]; then
     show_help
@@ -478,13 +527,17 @@ main() {
     run_all_tasks TASKS_STAGE2
   fi
 
-  # STAGE 3: Additional port scanning if -ports flag was used
+  # STAGE 3: Additional port scanning via -ports flag
   build_additional_port_tasks
 
   if [[ ${#TASKS_WPSCAN[@]} -gt 0 ]]; then
     echo "WordPress detected. Running WPScan tasks..."
     run_all_tasks TASKS_WPSCAN
   fi
+
+  overall_end_fmt=$(date "+%F %T")
+  overall_end_epoch=$(date +%s)
+  overall_duration=$(( overall_end_epoch - overall_start_epoch ))
 
   prepend_report
 
@@ -501,6 +554,12 @@ main() {
   echo "Scan completed. Results saved in $OUTPUT_FILE."
   echo "Total tasks run: $total_tasks"
   echo "Failed tasks: $FAILED_TASKS"
+
+  # Echo overall summary to command line
+  echo ""
+  echo "OVERALL SCAN SUMMARY:"
+  echo "---------------------"
+  generate_overall_summary
 }
 
 main "$@"
