@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 
 # --------------------------------------------------------------
-#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Module Listing
+#   l0l_w3bhunter scanner - Enhanced for OSCP/CTF with Additional Port Scanning
 #
 #   Key Enhancements:
 #    - Additional service-specific enumeration (SMB, FTP, CMS detection)
 #    - Auto-generated summary report categorizing discovered ports/services,
-#      which is prepended to the Markdown output (unless hidden via -hideReport).
-#    - A -modular flag to run only selected modules, and a new -hide flag
-#      to hide output of specified modules.
-#    - A new -listModules flag that prints out the list of all available modules.
+#      which is prepended to the Markdown output (unless hidden via -hideReport)
+#    - A -modular flag to run only selected modules and a -hide flag to hide output
+#      from specified modules.
+#    - A new -ports flag that takes a comma-separated list (e.g. "-ports 8080,1234")
+#      and performs additional Gobuster, Nikto, WhatWeb, and Curl scans on those ports.
 #    - Improved error handling and timeouts using the 'timeout' command.
 #    - Hydra SSH brute forcing uses 32 threads (-t 32)
 #    - Gobuster runs in quiet mode (-q) so only positive results are shown.
@@ -28,13 +29,13 @@ TARGET=""
 GOBUSTER_WORDLIST="/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt"
 GOBUSTER_THREADS="10"
 
-# Ports to skip (comma-separated), e.g., "80,443"
-SKIP_PORTS=""
+# Additional ports for extra scanning (comma-separated, e.g. "8080,1234")
+ADDITIONAL_PORTS=""
 
 # Flags for output and module selection
 HIDE_REPORT=false
 MODULAR=""       # Comma-separated list of modules to run (if empty, run all)
-HIDE_MODULES=""  # Comma-separated list of module keywords to hide output
+HIDE_MODULES=""  # Comma-separated list of module keywords whose output will be hidden
 LIST_MODULES=false
 
 # Valid modules (for -modular and -listModules)
@@ -45,13 +46,14 @@ declare -A SUMMARY
 
 # Arrays for tasks
 declare -a TASKS_STAGE1=()  # Nmap + baseline tasks
-declare -a TASKS_STAGE2=()  # Newly discovered ports
+declare -a TASKS_STAGE2=()  # Tasks queued from parsing Nmap output
 declare -a TASKS_WPSCAN=()  # WPScan tasks
+declare -a TASKS_ADDP=()    # Additional port scanning tasks from -ports flag
 
 # Track how many tasks fail
 FAILED_TASKS=0
 
-# Summaries (for tasks)
+# Summaries for tasks
 TASK_SUMMARY=""
 
 # ==========================
@@ -78,7 +80,9 @@ Options:
 
   -threads <NUMBER>    Gobuster thread count (default: \$GOBUSTER_THREADS)
 
-  -skip <PORTS>        Comma-separated list of ports to skip (e.g., 80,443)
+  -ports <PORTS>       Comma-separated list of ports to perform additional
+                       Gobuster, Nikto, WhatWeb, and Curl scans on.
+                       (e.g., -ports 8080,1234)
 
   -modular <modules>   Comma-separated list of modules to run.
                        Valid modules: nmap, gobuster, curl, nikto, whatweb, ftp, smb, ssh, rdp, wpscan.
@@ -97,7 +101,7 @@ Examples:
   \$0 -target 10.10.10.10
   \$0 -target 192.168.1.100 -createdir /home/user/MyScan
   \$0 -target 172.16.0.5 -modular nmap,ssh,rdp
-  \$0 -target 10.10.10.10 -w /path/to/custom_wordlist.txt -threads 50 -skip 80,443 -hide curl,whatweb
+  \$0 -target 10.10.10.10 -w /path/to/custom_wordlist.txt -threads 50 -ports 8080,1234 -hide curl,whatweb
   \$0 -listModules
 EOF
 }
@@ -126,14 +130,6 @@ timestamp() {
   date "+%F %T"
 }
 
-should_skip_port() {
-  if echo "$SKIP_PORTS" | grep -qw "$1"; then
-    return 0
-  else
-    return 1
-  fi
-}
-
 confirm_overwrite() {
   local path="$1"
   if [[ -e "$path" ]]; then
@@ -146,7 +142,7 @@ confirm_overwrite() {
   fi
 }
 
-# Check if module output should be hidden based on -hide flag
+# Check if a module's output should be hidden based on the -hide flag
 module_hidden() {
   local title_lower
   title_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
@@ -276,11 +272,8 @@ parse_nmap_and_queue_stage2() {
 
     add_summary "$service" "$port"
 
-    if should_skip_port "$port"; then
-      echo "Skipping discovered port $port as requested..."
-      continue
-    fi
-
+    # Do not filter out 80/443 here—these are normally scanned in stage 1
+    # Queue tasks for all discovered ports (other than 80 and 443)
     if [[ "$port" == "80" || "$port" == "443" ]]; then
       continue
     fi
@@ -338,23 +331,20 @@ quit' | ftp -n"
 }
 
 # ==========================
-#  GENERATE SUMMARY REPORT
+#  ADDITIONAL PORT SCANNING TASKS
 # ==========================
-generate_summary_report() {
-  local report="## Auto-generated Summary Report\n\n"
-  for service in "${!SUMMARY[@]}"; do
-    report+="- Open ${service^^} ports: ${SUMMARY[$service]}\n"
-  done
-  echo -e "$report"
-}
-
-prepend_report() {
-  if [ "$HIDE_REPORT" = false ]; then
-    local report
-    report=$(generate_summary_report)
-    local tmp_file
-    tmp_file=$(mktemp)
-    echo -e "$report\n$(cat "$OUTPUT_FILE")" > "$OUTPUT_FILE"
+build_additional_port_tasks() {
+  if [[ -n "$ADDITIONAL_PORTS" ]]; then
+    IFS=',' read -ra port_array <<< "$ADDITIONAL_PORTS"
+    for p in "${port_array[@]}"; do
+      TASKS_ADDP+=(
+        "Curl (HTTP on port $p)|timeout 60 curl -sSf http://$TARGET:$p -m 30 || echo 'Curl (HTTP) failed on port $p'"
+        "WhatWeb (HTTP on port $p)|timeout 60 whatweb http://$TARGET:$p"
+        "Nikto (HTTP on port $p)|timeout 300 nikto -h http://$TARGET:$p"
+        "Gobuster (HTTP on port $p)|timeout 300 gobuster dir -q -u http://$TARGET:$p -w $GOBUSTER_WORDLIST -t $GOBUSTER_THREADS"
+      )
+    done
+    run_all_tasks TASKS_ADDP
   fi
 }
 
@@ -369,7 +359,6 @@ main() {
     exit 1
   fi
 
-  # Process command-line arguments
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
       -h|--help)
@@ -403,16 +392,16 @@ main() {
         GOBUSTER_THREADS="$2"
         shift
         ;;
-      -skip)
-        SKIP_PORTS="$2"
+      -ports)
+        ADDITIONAL_PORTS="$2"
         shift
-        ;;
-      -hideReport)
-        HIDE_REPORT=true
         ;;
       -modular)
         MODULAR="$2"
         shift
+        ;;
+      -hideReport)
+        HIDE_REPORT=true
         ;;
       -hide)
         HIDE_MODULES="$2"
@@ -452,45 +441,44 @@ main() {
   # STAGE 1: Build tasks based on modules (if -modular is provided, only run those)
   TASKS_STAGE1+=("Nmap Full Port Scan|timeout 300 nmap -p- -sV -vv $TARGET | tee /tmp/nmap_temp")
 
-  if ! should_skip_port "80"; then
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)gobuster(,|$) ]]; then
-      TASKS_STAGE1+=("Gobuster (HTTP)|timeout 300 gobuster dir -q -u http://$TARGET -w $GOBUSTER_WORDLIST -t $GOBUSTER_THREADS")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)curl(,|$) ]]; then
-      TASKS_STAGE1+=("Curl (HTTP)|timeout 60 curl -sSf http://$TARGET -m 30 || echo 'Curl (HTTP) failed to connect'")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)nikto(,|$) ]]; then
-      TASKS_STAGE1+=("Nikto (HTTP)|timeout 300 nikto -h http://$TARGET")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)whatweb(,|$) ]]; then
-      TASKS_STAGE1+=("WhatWeb (HTTP)|timeout 60 whatweb http://$TARGET")
-    fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)gobuster(,|$) ]]; then
+    TASKS_STAGE1+=("Gobuster (HTTP)|timeout 300 gobuster dir -q -u http://$TARGET -w $GOBUSTER_WORDLIST -t $GOBUSTER_THREADS")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)curl(,|$) ]]; then
+    TASKS_STAGE1+=("Curl (HTTP)|timeout 60 curl -sSf http://$TARGET -m 30 || echo 'Curl (HTTP) failed to connect'")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)nikto(,|$) ]]; then
+    TASKS_STAGE1+=("Nikto (HTTP)|timeout 300 nikto -h http://$TARGET")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)whatweb(,|$) ]]; then
+    TASKS_STAGE1+=("WhatWeb (HTTP)|timeout 60 whatweb http://$TARGET")
   fi
 
-  if ! should_skip_port "443"; then
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)gobuster(,|$) ]]; then
-      TASKS_STAGE1+=("Gobuster (HTTPS)|timeout 300 gobuster dir -q -u https://$TARGET -w $GOBUSTER_WORDLIST -k -t $GOBUSTER_THREADS")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)curl(,|$) ]]; then
-      TASKS_STAGE1+=("Curl (HTTPS)|timeout 60 curl -sSf -k https://$TARGET -m 30 || echo 'Curl (HTTPS) failed to connect'")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)nikto(,|$) ]]; then
-      TASKS_STAGE1+=("Nikto (HTTPS)|timeout 300 PERL_LWP_SSL_VERIFY_HOSTNAME=0 nikto -h https://$TARGET")
-    fi
-    if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)whatweb(,|$) ]]; then
-      TASKS_STAGE1+=("WhatWeb (HTTPS)|timeout 60 whatweb https://$TARGET")
-    fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)gobuster(,|$) ]]; then
+    TASKS_STAGE1+=("Gobuster (HTTPS)|timeout 300 gobuster dir -q -u https://$TARGET -w $GOBUSTER_WORDLIST -k -t $GOBUSTER_THREADS")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)curl(,|$) ]]; then
+    TASKS_STAGE1+=("Curl (HTTPS)|timeout 60 curl -sSf -k https://$TARGET -m 30 || echo 'Curl (HTTPS) failed to connect'")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)nikto(,|$) ]]; then
+    TASKS_STAGE1+=("Nikto (HTTPS)|timeout 300 PERL_LWP_SSL_VERIFY_HOSTNAME=0 nikto -h https://$TARGET")
+  fi
+  if [[ -z "$MODULAR" || "$MODULAR" =~ (^|,)whatweb(,|$) ]]; then
+    TASKS_STAGE1+=("WhatWeb (HTTPS)|timeout 60 whatweb https://$TARGET")
   fi
 
   run_all_tasks TASKS_STAGE1
 
-  # STAGE 2: Parse Nmap and queue tasks for discovered ports
+  # STAGE 2: Parse Nmap & queue tasks for discovered ports
   parse_nmap_and_queue_stage2
 
   if [[ ${#TASKS_STAGE2[@]} -gt 0 ]]; then
     echo "Additional open ports discovered. Running new tasks..."
     run_all_tasks TASKS_STAGE2
   fi
+
+  # STAGE 3: Additional port scanning if -ports flag was used
+  build_additional_port_tasks
 
   if [[ ${#TASKS_WPSCAN[@]} -gt 0 ]]; then
     echo "WordPress detected. Running WPScan tasks..."
