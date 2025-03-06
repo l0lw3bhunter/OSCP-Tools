@@ -2,7 +2,7 @@
 
 ---
 
-```markdown
+
 # Recon Scan Script
 
 This script is an automated reconnaissance tool designed for initial enumeration on target boxes in CTF and similar environments. It performs a full TCP port scan, service enumeration, and then runs various modules (e.g., Gobuster, Curl, Nikto, WhatWeb, FTP, SMB, SSH with Hydra, RDP, and WPScan) to gather as much information as possible about the target.
@@ -22,7 +22,7 @@ In addition, if you use the **-createdir** flag, the script will create a folder
    ```bash
    git clone https://github.com/l0lw3bhunter/kalivm.git
    cd kalivm
-   ```
+   
 
 ## Downloading and Running the scan.sh Script
 
