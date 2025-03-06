@@ -22,7 +22,7 @@ In addition, if you use the **-createdir** flag, the script will create a folder
    ```bash
    git clone https://github.com/l0lw3bhunter/kalivm.git
    cd kalivm
-   
+   ```
 
 ## Downloading and Running the scan.sh Script
 
@@ -108,8 +108,8 @@ For example, to scan a target with IP `192.168.1.100`:
   Task durations and the overall scan time are displayed in a “Xm, Ys” format (e.g., “2m, 30s”).
 
 Enjoy using the script for your initial reconnaissance tasks!
-```
+
 
 ---
 
-This updated README now reflects the latest version of the script with all the restored flags and features, along with a clear explanation of the output formats and how to use the tool.
+
