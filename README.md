@@ -1,4 +1,4 @@
-Below is the updated README.md file reflecting the current state of the script. It preserves the original structure for downloading, installing, and running the tool while incorporating details about the new features such as modular per‐service reports, formatted durations, and screenshot capture. Note that the script is now described as an automated reconnaissance tool for initial enumeration in CTF/box environments (without mentioning any specific certification).
+
 
 ---
 
@@ -18,15 +18,10 @@ In addition, if you use the **-createdir** flag, the script will create a folder
 
 ## Installation
 
-1. **Clone this repository:**
+ **Clone this repository:**
    ```bash
    git clone https://github.com/l0lw3bhunter/kalivm.git
    cd kalivm
-   ```
-
-2. **Run the setup script (if needed):**
-   ```bash
-   sudo ./setup.sh
    ```
 
 ## Downloading and Running the scan.sh Script
