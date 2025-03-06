@@ -1,150 +1,120 @@
-
+Below is the updated README.md file reflecting the current state of the script. It preserves the original structure for downloading, installing, and running the tool while incorporating details about the new features such as modular per‐service reports, formatted durations, and screenshot capture. Note that the script is now described as an automated reconnaissance tool for initial enumeration in CTF/box environments (without mentioning any specific certification).
 
 ---
 
 ```markdown
-# OSCP Initial Scan Script
+# Recon Scan Script
 
-This is an automated reconnaissance tool designed for initial enumeration on target boxes in CTF environments. It performs a full TCP port scan with Nmap, runs multiple web enumeration modules (Gobuster, Curl, Nikto, WhatWeb), and conducts additional service-specific tasks (FTP, SMB, SSH with Hydra, RDP, etc.). The script also offers modular report generation, which creates separate Markdown files for each discovered service when used with the **-createdir** flag.
+This script is an automated reconnaissance tool designed for initial enumeration on target boxes in CTF and similar environments. It performs a full TCP port scan, service enumeration, and then runs various modules (e.g., Gobuster, Curl, Nikto, WhatWeb, FTP, SMB, SSH with Hydra, RDP, and WPScan) to gather as much information as possible about the target.
 
-## Features
-
-- **Full TCP Port Scan & Service Detection**  
-  Uses Nmap to identify open ports and service details.
-
-- **Web Enumeration**  
-  Runs Gobuster scans for HTTP and HTTPS using a specified wordlist, Curl checks, Nikto vulnerability scans, and WhatWeb for CMS detection.  
-  *The default Gobuster wordlist is:*
-  ```
-  /usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt
-  ```
-  *Default Gobuster thread count is set to 50.*
-
-- **Additional Service Tasks**  
-  Based on Nmap results, it runs further tasks such as:
-  - FTP enumeration (checks for anonymous login and lists files)
-  - SMB enumeration via enum4linux
-  - SSH auditing (with Hydra for default credential brute-forcing)
-  - RDP and netcat banner grabbing
-
-- **Modular Markdown Reports**  
-  When the **-createdir** flag is used, the script creates a folder structure with the following directories:
-  - **Enum**: Contains the main scan report (`Initial_scan.md`) and separate per-service reports (e.g., `80_http.md`, `21_ftp.md`, etc.).  
-  - **Exploit**: Placeholder for exploitation findings.
-  - **Privesc**: Placeholder for privilege escalation notes.
-  
-  The modular reports include raw output from individual modules (Gobuster output, FTP results, etc.) along with informative headers.
-
-- **Enhanced Output Formatting**  
-  - Durations are displayed in a formatted “Xm, Ys” style.
-  - The overall scan summary is wrapped in triple backticks for a clean Markdown code block presentation.
-  - Screenshots of web pages are automatically captured (if either `wkhtmltoimage` or `cutycapt` is available) when Gobuster finds subdirectories.
+In addition, if you use the **-createdir** flag, the script will create a folder structure with modular per‑service Markdown reports (e.g., `Enum/80_http.md`, `Enum/21_ftp.md`) where the output of each module is neatly stored. The overall scan summary is also included (wrapped in triple backticks) and durations are formatted as “Xm, Ys”.
 
 ## Prerequisites
 
 - A Debian-based system (e.g., Kali Linux)
-- Required tools installed in your PATH:
-  - `nmap`
-  - `gobuster`
-  - `curl`
-  - `nikto`
-  - `whatweb`
-  - `ftp`
-  - `enum4linux`
-  - `hydra`
-  - `netcat`
-  - Optionally, `wkhtmltoimage` or `cutycapt` for screenshot capture
-- Sudo privileges (for tasks that require elevated permissions)
+- An active internet connection
+- `wget` installed (usually pre-installed on Kali Linux)
+- Sudo privileges
 
 ## Installation
 
-1. **Clone the repository or download the script directly:**
+1. **Clone this repository:**
    ```bash
    git clone https://github.com/l0lw3bhunter/kalivm.git
    cd kalivm
    ```
-   Or download the scan script directly:
+
+2. **Run the setup script (if needed):**
    ```bash
-   wget https://raw.githubusercontent.com/l0lw3bhunter/kalivm/main/scan.sh
+   sudo ./setup.sh
    ```
 
-2. **Make the script executable:**
-   ```bash
-   chmod +x scan.sh
-   ```
+## Downloading and Running the scan.sh Script
 
-## Usage
+The `scan.sh` script is an automated reconnaissance tool that performs initial enumeration of a target. It supports multiple modules (such as Nmap, Gobuster, Curl, Nikto, WhatWeb, FTP, SMB, SSH, RDP, and WPScan) and can generate modular reports if desired.
+
+### Download
+
+If the script is hosted in this repository, simply navigate to it. Otherwise, download it directly:
+```bash
+wget https://raw.githubusercontent.com/l0lw3bhunter/kalivm/main/scan.sh
+```
+
+### Make the Script Executable
+
+Ensure the script has execute permissions:
+```bash
+chmod +x scan.sh
+```
+
+### Running the Script
 
 **Basic usage:**
 ```bash
 ./scan.sh -target <TARGET_IP>
 ```
-Example:
+For example, to scan a target with IP `192.168.1.100`:
 ```bash
 ./scan.sh -target 192.168.1.100
 ```
 
-**Using the -createdir flag for Modular Reports:**
+### Additional Flags
 
-When you supply the **-createdir** flag, the script creates a folder structure with the following:
-- `Enum/Initial_scan.md`: The overall scan report.
-- `Enum/<port>_<service>.md`: Separate reports for each discovered service (e.g., `80_http.md`, `21_ftp.md`).
-- `Exploit/Exploit.md` and `Privesc/Privesc.md`: Placeholders for further enumeration.
+- **`-createdir <PATH>`**:  
+  Create a folder structure at the specified path. This will create subdirectories:
+  - `Enum` (which will include `Initial_scan.md` and per‑service reports like `80_http.md`, `21_ftp.md`, etc.)
+  - `Exploit`
+  - `Privesc`
+  
+- **`-o <OUTPUT_FILE>`**:  
+  Specify a custom output file (overridden by -createdir).
 
-Example:
+- **`-w <WORDLIST>`**:  
+  Set a custom wordlist for Gobuster (default:  
+  `/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt`).
+
+- **`-threads <NUMBER>`**:  
+  Set the Gobuster thread count (default: 50).
+
+- **`-ports <PORTS>`**:  
+  Run additional Gobuster, Nikto, Curl, and WhatWeb scans on the specified comma-separated ports (e.g., `8080,1234`).
+
+- **`-modular <modules>`**:  
+  Run only the specified modules. Valid modules are:  
+  `nmap, gobuster, curl, nikto, whatweb, ftp, smb, ssh, rdp, wpscan`.
+
+- **`-hide <modules>`**:  
+  Hide output from the specified modules.
+
+- **`-hideReport`**:  
+  Do not prepend the auto-generated overall summary report.
+
+- **`-listModules`**:  
+  List all valid modules and exit.
+
+- **`-h` or `--help`**:  
+  Show this help menu and exit.
+
+### Example with Additional Flags
+
 ```bash
-./scan.sh -target 192.168.1.100 -createdir /home/user/MyScanReports
+./scan.sh -target 192.168.1.100 -ports 8080,8888 -modular nmap,ssh,rdp -hide curl,whatweb -hideReport
 ```
 
-**Additional Flags:**
+## Output Details
 
-- **`-modular <modules>`**: Run only the specified modules.  
-  *Valid modules*: nmap, gobuster, curl, nikto, whatweb, ftp, smb, ssh, rdp, wpscan  
-  Example: `-modular nmap,ssh,rdp`
+- **Main Report:**  
+  The primary output is saved as either the file specified with `-o` or (if `-createdir` is used) in the `Enum/Initial_scan.md` file within the created folder structure. The overall scan summary is wrapped in triple backticks for neat Markdown formatting.
 
-- **`-hide <modules>`**: Hide output from the specified modules (comma-separated).  
-  Example: `-hide curl,whatweb`
+- **Modular Reports:**  
+  If you use the `-createdir` flag, separate Markdown files will be generated for each discovered service (for example, `80_http.md` for HTTP on port 80). These files contain the raw output of the corresponding module (e.g., Gobuster results with discovered subdirectories and, if available, screenshots) as well as additional details such as FTP file listings.
 
-- **`-hideReport`**: Do not prepend the auto-generated overall summary report.
+- **Duration Format:**  
+  Task durations and the overall scan time are displayed in a “Xm, Ys” format (e.g., “2m, 30s”).
 
-- **`-o <OUTPUT_FILE>`**: Specify a custom output file (overridden by -createdir).
-
-- **`-w <WORDLIST>`**: Set a custom wordlist for Gobuster.
-
-- **`-threads <NUMBER>`**: Set Gobuster's thread count.
-
-- **`-ports <PORTS>`**: Run additional scans (Gobuster, Nikto, Curl, WhatWeb) on the specified ports.  
-  Example: `-ports 8080,8888`
-
-- **`-listModules`**: Lists all available modules and exits.
-
-- **`-h, --help`**: Display help and exit.
-
-**Example with Multiple Flags:**
-```bash
-./scan.sh -target 192.168.1.100 -createdir /home/user/MyScanReports -ports 8080,8888 -modular nmap,ssh,rdp -hide curl,whatweb -hideReport
-```
-
-## Output
-
-The script generates an overall scan report in Markdown format that includes sections for:
-- Nmap Scan results (open ports, OS detection, etc.)
-- SSH Module results (including Hydra results)
-- Gobuster Scan results (with details of discovered directories and screenshots)
-- Nikto Scan results
-- FTP Module results (with anonymous login status and file listings)
-- CMS Detection
-
-The overall summary is wrapped in triple backticks for neat formatting, and modular reports (if enabled) are created for each service.
-
-## Disclaimer
-
-This tool is intended for educational and authorized penetration testing use only. Unauthorized scanning of networks is illegal and unethical.
-
----
-
-Happy scanning!
+Enjoy using the script for your initial reconnaissance tasks!
 ```
 
 ---
 
+This updated README now reflects the latest version of the script with all the restored flags and features, along with a clear explanation of the output formats and how to use the tool.
