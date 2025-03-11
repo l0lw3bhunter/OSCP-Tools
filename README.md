@@ -1,115 +1,127 @@
 
+# OSCP Enumeration Script
 
----
+A comprehensive Bash tool for automating enumeration and vulnerability scanning tasks during penetration testing and OSCP labs/exams.
 
+> **Disclaimer:** This tool is for educational purposes and authorized testing only. Use it responsibly and only on systems you are permitted to assess.
 
-# Recon Scan Script
+## Description
 
-This script is an automated reconnaissance tool designed for initial enumeration on target boxes in CTF and similar environments. It performs a full TCP port scan, service enumeration, and then runs various modules (e.g., Gobuster, Curl, Nikto, WhatWeb, FTP, SMB, SSH with Hydra, RDP, and WPScan) to gather as much information as possible about the target.
+The OSCP Enumeration Script automates various scanning and enumeration tasks such as:
+- **Core Scans:** Performs an aggressive full TCP port scan, safe script scan, and a top-20 UDP port scan using Nmap.
+- **Service Enumeration:** Detects open ports from scan results and automatically runs service-specific enumeration for FTP, SSH, SMTP, POP3, IMAP, SNMP, LDAP, MySQL, RDP, VNC, WinRM, DNS, and web services.
+- **Vulnerability Checks:** Runs additional vulnerability scans using Nmap NSE scripts and credential spraying via Hydra.
+- **Report Generation:** Creates a Markdown report (`initial_scan.md`) with banners, timestamps, and detailed output from each scan.
 
-In addition, if you use the **-createdir** flag, the script will create a folder structure with modular per‑service Markdown reports (e.g., `Enum/80_http.md`, `Enum/21_ftp.md`) where the output of each module is neatly stored. The overall scan summary is also included (wrapped in triple backticks) and durations are formatted as “Xm, Ys”.
+## Features
 
-## Prerequisites
+- **Automated Workflow:** Sequential phases covering core scans, service enumeration, and vulnerability checks.
+- **Service-Specific Enumeration:** Custom functions to enumerate common services (FTP, SSH, SMTP, etc.).
+- **Output Report:** Saves results in a well-structured Markdown file with timing details.
+- **Customizable:** Global configuration variables (target IP, output file, wordlists, credentials) can be adjusted.
 
-- A Debian-based system (e.g., Kali Linux)
-- An active internet connection
-- `wget` installed (usually pre-installed on Kali Linux)
-- Sudo privileges
+## Requirements
+
+- **Operating System:** Linux (Kali Linux is recommended)
+- **Shell:** Bash
+- **Tools and Dependencies:**
+  - **Nmap** (with NSE scripts)
+  - **Hydra** (for credential spraying)
+  - **FTP client** (for FTP checks)
+  - **Gobuster** (for directory and file brute-forcing)
+  - **Nikto** and **WhatWeb** (for web vulnerability scanning)
+  - **Netcat (`nc`)**
+  - **snmpwalk**, **onesixtyone**, **ldapsearch**, **mysqladmin** (for service enumeration)
+  - **SecLists** (wordlists are used from `/usr/share/seclists/Discovery/Web-Content`)
 
 ## Installation
 
- **Clone this repository:**
+1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/l0lw3bhunter/kalivm.git
    cd kalivm
    ```
 
-## Downloading and Running the scan.sh Script
+2. **Install the required tools:**
 
-The `scan.sh` script is an automated reconnaissance tool that performs initial enumeration of a target. It supports multiple modules (such as Nmap, Gobuster, Curl, Nikto, WhatWeb, FTP, SMB, SSH, RDP, and WPScan) and can generate modular reports if desired.
+   For Debian-based systems (e.g., Kali Linux), run:
+   
+   ```bash
+   sudo apt update
+   sudo apt install nmap hydra ftp gobuster nikto whatweb netcat snmpwalk ldap-utils mysql-client seclists
+   ```
 
-### Download
+3. **Verify the SecLists directory exists:**
 
-If the script is hosted in this repository, simply navigate to it. Otherwise, download it directly:
-```bash
-wget https://raw.githubusercontent.com/l0lw3bhunter/kalivm/main/scan.sh
-```
+   Ensure that `/usr/share/seclists/Discovery/Web-Content` is present. If not, install or update the `seclists` package.
 
-### Make the Script Executable
+## Usage
 
-Ensure the script has execute permissions:
-```bash
-chmod +x scan.sh
-```
-
-### Running the Script
-
-**Basic usage:**
-```bash
-./scan.sh -target <TARGET_IP>
-```
-For example, to scan a target with IP `192.168.1.100`:
-```bash
-./scan.sh -target 192.168.1.100
-```
-
-### Additional Flags
-
-- **`-createdir <PATH>`**:  
-  Create a folder structure at the specified path. This will create subdirectories:
-  - `Enum` (which will include `Initial_scan.md` and per‑service reports like `80_http.md`, `21_ftp.md`, etc.)
-  - `Exploit`
-  - `Privesc`
-  
-- **`-o <OUTPUT_FILE>`**:  
-  Specify a custom output file (overridden by -createdir).
-
-- **`-w <WORDLIST>`**:  
-  Set a custom wordlist for Gobuster (default:  
-  `/usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt`).
-
-- **`-threads <NUMBER>`**:  
-  Set the Gobuster thread count (default: 50).
-
-- **`-ports <PORTS>`**:  
-  Run additional Gobuster, Nikto, Curl, and WhatWeb scans on the specified comma-separated ports (e.g., `8080,1234`).
-
-- **`-modular <modules>`**:  
-  Run only the specified modules. Valid modules are:  
-  `nmap, gobuster, curl, nikto, whatweb, ftp, smb, ssh, rdp, wpscan`.
-
-- **`-hide <modules>`**:  
-  Hide output from the specified modules.
-
-- **`-hideReport`**:  
-  Do not prepend the auto-generated overall summary report.
-
-- **`-listModules`**:  
-  List all valid modules and exit.
-
-- **`-h` or `--help`**:  
-  Show this help menu and exit.
-
-### Example with Additional Flags
+Run the script by providing the target IP. The script requires at least the `-ip` option.
 
 ```bash
-./scan.sh -target 192.168.1.100 -ports 8080,8888 -modular nmap,ssh,rdp -hide curl,whatweb -hideReport
+./deepscan.sh -ip <target_ip> [options]
 ```
 
-## Output Details
+### Options
 
-- **Main Report:**  
-  The primary output is saved as either the file specified with `-o` or (if `-createdir` is used) in the `Enum/Initial_scan.md` file within the created folder structure. The overall scan summary is wrapped in triple backticks for neat Markdown formatting.
+- `-ip <target_ip>`  
+  **Required.** Specifies the target IP address for scanning.
 
-- **Modular Reports:**  
-  If you use the `-createdir` flag, separate Markdown files will be generated for each discovered service (for example, `80_http.md` for HTTP on port 80). These files contain the raw output of the corresponding module (e.g., Gobuster results with discovered subdirectories and, if available, screenshots) as well as additional details such as FTP file listings.
+- `-createdir <DIR>`  
+  (Optional) Creates the specified output directory and saves the report as `initial_scan.md` inside that directory.
 
-- **Duration Format:**  
-  Task durations and the overall scan time are displayed in a “Xm, Ys” format (e.g., “2m, 30s”).
+- `-h` or `--help`  
+  Displays the help menu with usage instructions.
 
-Enjoy using the script for your initial reconnaissance tasks!
+### Example
 
+```bash
+./deepscan.sh -ip 10.10.10.123 -createdir target_data
+```
 
----
+This command sets the target to `10.10.10.123`, creates a directory named `target_data` (if it doesn’t exist), and saves the Markdown report in that directory.
 
+## How It Works
+
+1. **Initialization:**
+   - Parses command-line arguments.
+   - Displays an ASCII banner and help menu if requested.
+   - Initializes the output file with target details and start time.
+
+2. **Core Scans (Phase 1):**
+   - **Aggressive TCP Scan:** Uses Nmap with aggressive options.
+   - **Safe Scripts Scan:** Runs a safer scan with default scripts.
+   - **UDP Scan:** Scans the top 20 UDP ports.
+
+3. **Service Enumeration (Phase 2):**
+   - Reads open TCP ports from the initial report.
+   - Runs service-specific functions for each recognized port (e.g., FTP, SSH, SMTP, etc.).
+
+4. **Vulnerability Checks (Phase 3):**
+   - Executes Nmap vulnerability scripts.
+   - Performs credential spraying using Hydra against services like SSH, FTP, and SMB.
+
+5. **Finalization:**
+   - Appends a completion timestamp and tidies up the report.
+
+## Customization
+
+- **Global Configuration:**  
+  Edit variables at the top of the script to change the target, output file, or wordlist directories.
+- **Credential Lists:**  
+  Update the paths in the `CREDENTIALS` array if you wish to use different username/password wordlists.
+- **Service Functions:**  
+  Extend or modify service check functions (e.g., `ftp_checks`, `ssh_checks`, etc.) to fit your testing needs.
+
+## Contributing
+
+Contributions, suggestions, and improvements are welcome. Feel free to open issues or submit pull requests to enhance this tool.
+
+## License
+
+Distributed under the [MIT License](LICENSE).
+
+```
 
