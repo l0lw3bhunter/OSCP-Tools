@@ -39,8 +39,8 @@ The OSCP Enumeration Script automates various scanning and enumeration tasks suc
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/l0lw3bhunter/kalivm.git
-   cd kalivm
+   git clone https://github.com/l0lw3bhunter/OSCP-Tools.git
+   cd OSCP-Tools/scripts
    ```
 
 2. **Install the required tools:**
