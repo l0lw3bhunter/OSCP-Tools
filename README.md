@@ -122,6 +122,3 @@ Contributions, suggestions, and improvements are welcome. Feel free to open issu
 ## License
 
 Distributed under the [MIT License](LICENSE).
-
-```
-
